@@ -46,6 +46,20 @@ android {
         dependsOn("syncAudioToRaw")
     }
 
+    // Stable debug signing key committed for CI builds, so successive APKs from
+    // GitHub Actions can be installed as in-place updates. Debug-only: not for distribution.
+    signingConfigs {
+        getByName("debug") {
+            val ciKeystore = rootProject.file("ci/debug.keystore")
+            if (ciKeystore.exists()) {
+                storeFile = ciKeystore
+                storePassword = "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = "android"
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false

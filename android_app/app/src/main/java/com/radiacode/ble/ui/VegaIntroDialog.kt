@@ -273,7 +273,9 @@ Let us begin.
             // Setup ambient background audio first (plays at 5% volume, doesn't affect waveform)
             setupAmbientAudio()
             
-            mediaPlayer = MediaPlayer.create(context, R.raw.vega_intro)?.apply {
+            mediaPlayer = context.resources.getIdentifier("vega_intro", "raw", context.packageName)
+                .takeIf { it != 0 }
+                ?.let { MediaPlayer.create(context, it) }?.apply {
                 setOnCompletionListener {
                     onAudioComplete()
                 }

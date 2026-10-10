@@ -319,7 +319,9 @@ When GPS tracking is enabled, the app will continuously collect location data an
             mediaPlayer?.release()
             
             // Create MediaPlayer from raw resource
-            mediaPlayer = MediaPlayer.create(context, R.raw.vega_gps_warning)?.apply {
+            mediaPlayer = context.resources.getIdentifier("vega_gps_warning", "raw", context.packageName)
+                .takeIf { it != 0 }
+                ?.let { MediaPlayer.create(context, it) }?.apply {
                 setAudioAttributes(
                     AudioAttributes.Builder()
                         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
