@@ -31,8 +31,12 @@ object VegaIsotopeApiClient {
 
     private const val TAG = "VegaIsotopeAPI"
     
-    // API base URL - same server as Vega TTS
-    private const val API_BASE_URL = "http://99.122.58.29:443"
+    /**
+     * HTTPS base URL of the identification service, or null when remote identification is
+     * disabled. Set by the caller from ProSettings.remoteIsotopeEndpoint(); there is no default.
+     */
+    @Volatile
+    var endpoint: String? = null
     private const val IDENTIFY_ENDPOINT = "/identify"
     
     // Spectrum dimensions (fixed by model architecture)
@@ -90,6 +94,18 @@ object VegaIsotopeApiClient {
     ) {
         executor.execute {
             try {
+                val base = endpoint
+                if (base.isNullOrBlank() || !base.startsWith("https://", ignoreCase = true)) {
+                    onResult(IdentificationResponse(
+                        success = false,
+                        isotopes = emptyList(),
+                        numDetected = 0,
+                        confidence = 0f,
+                        processingTimeMs = 0f,
+                        errorMessage = "Remote identification is off. Enable it and set an HTTPS address in Signals and privacy, or use the offline identification in Spectrum."
+                    ))
+                    return@execute
+                }
                 val reqId = requestId ?: "vega_iso_${System.currentTimeMillis()}"
                 val t0 = android.os.SystemClock.elapsedRealtime()
 
@@ -164,7 +180,6 @@ object VegaIsotopeApiClient {
 
                     // Extra metadata (server may ignore; helps debug end-to-end issues)
                     put("request_id", reqId)
-                    put("client_device_id", clientDeviceId)
                     put("window_start_ms", windowStartMs)
                     put("window_end_ms", windowEndMs)
                     put("window_length_seconds", windowLengthSeconds)
@@ -187,7 +202,7 @@ object VegaIsotopeApiClient {
                 Log.d(TAG, "[$reqId] Sending ${snapshots.size}x$EXPECTED_CHANNELS matrix; globalMax=$globalMax totalCounts=$totalCounts")
                 
                 // Make HTTP request
-                val url = URL("$API_BASE_URL$IDENTIFY_ENDPOINT")
+                val url = URL("${base.trimEnd('/')}$IDENTIFY_ENDPOINT")
                 val connection = url.openConnection() as HttpURLConnection
                 connection.apply {
                     requestMethod = "POST"

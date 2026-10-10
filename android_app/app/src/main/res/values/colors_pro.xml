@@ -44,5 +44,5 @@
     <color name="pro_status_disconnected">#6E6E78</color>
     
     <!-- App icon -->
-    <color name="ic_launcher_background">#FFFFFF</color>
+    <color name="ic_launcher_background">#0D0D0F</color>
 </resources>

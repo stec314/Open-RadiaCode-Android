@@ -1626,6 +1626,7 @@ class VegaSpectralAnalysisActivity : AppCompatActivity() {
                 // Call the API - this also runs on its own executor
                 android.util.Log.d("VegaIsotope", "[$requestId] bg: calling API")
                 
+                VegaIsotopeApiClient.endpoint = com.radiacode.ble.device.ProSettings.remoteIsotopeEndpoint(this)
                 VegaIsotopeApiClient.identifyIsotopes(
                     snapshots = snapshots,
                     threshold = 0.1f,  // Very low threshold to get all possibilities

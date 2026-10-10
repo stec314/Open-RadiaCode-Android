@@ -2,7 +2,6 @@ name: Android APK
 
 on:
   push:
-    branches: [main]
     paths:
       - "android_app/**"
       - ".github/workflows/android-build.yml"
@@ -30,10 +29,26 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Build debug APK
+      - name: Unit tests
         run: |
           chmod +x gradlew
-          ./gradlew --no-daemon assembleDebug
+          ./gradlew --no-daemon testDebugUnitTest 2>&1 | tee test.log
+          exit ${PIPESTATUS[0]}
+
+      - name: Build debug APK
+        run: |
+          ./gradlew --no-daemon assembleDebug 2>&1 | tee build.log
+          exit ${PIPESTATUS[0]}
+
+      - name: Report errors as annotations
+        if: failure()
+        run: |
+          for f in test.log build.log; do
+            [ -f "$f" ] || continue
+            grep -E "^e: |error:|FAILED|AssertionError|What went wrong" -A2 "$f" | head -60 | while IFS= read -r line; do
+              echo "::error title=$f::${line}"
+            done
+          done
 
       - name: Rename APK
         id: apk
@@ -50,15 +65,20 @@ jobs:
           name: ${{ steps.apk.outputs.name }}
           path: ${{ steps.apk.outputs.path }}
 
-      # Rolling pre-release so the latest APK is downloadable from a phone
+      # Rolling pre-release per branch: the latest APK is downloadable from a phone
       # without logging into GitHub Actions or unzipping an artifact.
       - name: Publish rolling pre-release
         if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release delete latest-build --yes --cleanup-tag || true
-          gh release create latest-build "${{ steps.apk.outputs.name }}" \
-            --prerelease \
-            --title "Latest build (${GITHUB_SHA::7})" \
-            --notes "Automatic debug build from commit ${GITHUB_SHA}."
+          BRANCH="${GITHUB_REF_NAME}"
+          if [ "$BRANCH" = "main" ]; then TAG="latest-build"; else TAG="latest-$(echo "$BRANCH" | tr '/' '-' | tr -cd 'A-Za-z0-9._-')"; fi
+          gh release delete "$TAG" --yes --cleanup-tag || true
+          gh release create "$TAG" "${{ steps.apk.outputs.name }}" \
+            --prerelease --target "$GITHUB_SHA" \
+            --title "Latest build: ${BRANCH} (${GITHUB_SHA::7})" \
+            --notes "Automatic debug build of branch ${BRANCH}, commit ${GITHUB_SHA}."
+          # one-off cleanup of temporary dependency export artifacts
+          gh release delete ci-deps --yes --cleanup-tag || true
+          git push origin --delete ci/export-deps || true

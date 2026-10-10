@@ -887,8 +887,15 @@ class MainActivity : AppCompatActivity() {
                 }
                 R.id.nav_settings -> setPanel(Panel.Settings)
                 R.id.nav_logs -> setPanel(Panel.Logs)
+                R.id.nav_search -> startActivity(Intent(this, com.radiacode.ble.pro.SearchActivity::class.java))
+                R.id.nav_spectrum -> startActivity(Intent(this, com.radiacode.ble.pro.SpectrumActivity::class.java))
+                R.id.nav_dose -> startActivity(Intent(this, com.radiacode.ble.pro.DoseActivity::class.java))
+                R.id.nav_event_log -> startActivity(Intent(this, com.radiacode.ble.pro.EventLogActivity::class.java))
+                R.id.nav_intervention -> startActivity(Intent(this, com.radiacode.ble.pro.InterventionActivity::class.java))
+                R.id.nav_device_control -> startActivity(Intent(this, com.radiacode.ble.pro.DeviceControlActivity::class.java))
+                R.id.nav_signals -> startActivity(Intent(this, com.radiacode.ble.pro.SignalsSettingsActivity::class.java))
             }
-            item.isChecked = true
+            if (item.groupId != R.id.nav_group_instrument) item.isChecked = true
             drawerLayout.closeDrawer(GravityCompat.START)
             true
         }
@@ -1115,12 +1122,12 @@ class MainActivity : AppCompatActivity() {
         val cyanColor = ContextCompat.getColor(this, R.color.pro_cyan)
         val magentaColor = ContextCompat.getColor(this, R.color.pro_magenta)
 
-        doseCard.setLabel("DELTA DOSE RATE")
+        doseCard.setLabel("DOSE RATE")
         doseCard.setAccentColor(cyanColor)
         doseCard.setValueText("—")
         doseCard.setTrend(0f)
 
-        cpsCard.setLabel("DELTA COUNT RATE")
+        cpsCard.setLabel("COUNT RATE")
         cpsCard.setAccentColor(magentaColor)
         cpsCard.setValueText("—")
         cpsCard.setTrend(0f)
@@ -2369,11 +2376,11 @@ class MainActivity : AppCompatActivity() {
         previousCps = cpsOrCpm
 
         mainHandler.post {
-            doseCard.setLabel("DELTA DOSE RATE · $doseUnit")
+            doseCard.setLabel("DOSE RATE")
             doseCard.setValue(dose, doseUnit)
             doseCard.setTrend(doseTrend)
 
-            cpsCard.setLabel("DELTA COUNT RATE · $cpsUnit")
+            cpsCard.setLabel("COUNT RATE")
             cpsCard.setValue(cpsOrCpm, cpsUnit)
             cpsCard.setTrend(cpsTrend)
         }

@@ -233,6 +233,7 @@ class RadiaCodeForegroundService : Service() {
             onSpectrumReading = { deviceId, spectrum -> handleSpectrumReading(deviceId, spectrum) },
             onAccumulatedSpectrumReading = { deviceId, spectrum -> handleAccumulatedSpectrumReading(deviceId, spectrum) }
         )
+        com.radiacode.ble.device.DeviceGateway.attach(deviceManager)
         
         try {
             registerReceiver(btStateReceiver, IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED))
@@ -1057,6 +1058,7 @@ class RadiaCodeForegroundService : Service() {
     private fun stopInternal(reason: String) {
         Log.d(TAG, "service stopInternal: $reason")
         
+        com.radiacode.ble.device.DeviceGateway.attach(null)
         deviceManager?.stop()
         deviceManager = null
 

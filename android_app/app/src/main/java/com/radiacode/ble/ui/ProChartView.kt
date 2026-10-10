@@ -529,7 +529,7 @@ class ProChartView @JvmOverloads constructor(
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
         // Calculate chart bounds
-        val yAxisWidth = density * 44f
+        val yAxisWidth = density * 52f
         // Reserve extra space on right for forecast area when enabled
         val forecastSpace = if (showForecast && forecastPoints.isNotEmpty()) density * 80f else 0f
         val rightAxisWidth = if (hasSecondaryAxis) density * 100f else density * 12f  // Extra wide for secondary axis labels
@@ -1729,9 +1729,14 @@ class ProChartView @JvmOverloads constructor(
             // Grid line
             canvas.drawLine(chartLeft, y, chartRight, y, gridPaint)
 
-            // Y-axis label
+            // Y-axis label (shrunk to fit the axis gutter instead of being clipped)
             val label = formatValue(value)
+            val savedSize = axisTextPaint.textSize
+            val avail = chartLeft - density * 8f
+            val lw = axisTextPaint.measureText(label)
+            if (lw > avail && lw > 0f) axisTextPaint.textSize = savedSize * avail / lw
             canvas.drawText(label, chartLeft - density * 6f, y + axisTextPaint.textSize / 3f, axisTextPaint)
+            axisTextPaint.textSize = savedSize
         }
 
         // Draw left Y-axis title if in comparison mode
@@ -1763,6 +1768,12 @@ class ProChartView @JvmOverloads constructor(
             val time = Instant.ofEpochMilli(ts).atZone(ZoneId.systemDefault()).toLocalTime()
             val label = timeFmt.format(time)
 
+            // Edge labels are anchored inside the plot so they are never cut off
+            axisTextPaint.textAlign = when (i) {
+                0 -> Paint.Align.LEFT
+                labelCount -> Paint.Align.RIGHT
+                else -> Paint.Align.CENTER
+            }
             canvas.drawText(label, x, chartBottom + density * 16f, axisTextPaint)
         }
 

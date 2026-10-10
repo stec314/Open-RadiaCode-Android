@@ -181,21 +181,33 @@ class MetricCardView @JvmOverloads constructor(
         canvas.drawRoundRect(rect, cornerRadius, cornerRadius, bgPaint)
         canvas.drawRoundRect(rect, cornerRadius, cornerRadius, borderPaint)
 
-        // Label (top left)
-        canvas.drawText(label, padding, padding + labelPaint.textSize, labelPaint)
+        // Trend (top right) is measured first so the label can be ellipsized to fit beside it
+        val trendText = buildTrendText()
+        val trendWidth = if (trendText != null) trendPaint.measureText(trendText) + density * 8f else 0f
+        val labelMax = (w - padding * 2 - trendWidth).coerceAtLeast(density * 24f)
+        val labelText = ellipsize(label, labelPaint, labelMax)
+        canvas.drawText(labelText, padding, padding + labelPaint.textSize, labelPaint)
+        if (trendText != null) {
+            trendPaint.textAlign = Paint.Align.RIGHT
+            canvas.drawText(trendText, w - padding, padding + trendPaint.textSize, trendPaint)
+            trendPaint.textAlign = Paint.Align.LEFT
+        }
 
-        // Trend (top right)
-        drawTrend(canvas, w - padding, padding + trendPaint.textSize)
-
-        // Value (center)
+        // Value (center) - shrink the font if the number does not fit the card width
         val displayText = valueText ?: formatValue(value)
-        val valueY = padding + labelPaint.textSize + density * 8f + valuePaint.textSize
+        valuePaint.textSize = scaledDensity * 36f
+        val maxValueWidth = w - padding * 2
+        val measured = valuePaint.measureText(displayText)
+        if (measured > maxValueWidth && measured > 0f) {
+            valuePaint.textSize = (valuePaint.textSize * maxValueWidth / measured).coerceAtLeast(scaledDensity * 14f)
+        }
+        val valueY = padding + labelPaint.textSize + density * 8f + scaledDensity * 36f
         canvas.drawText(displayText, padding, valueY, valuePaint)
 
         // Unit (below value) - only show if we have a real value
         val unitY = valueY + density * 4f + unitPaint.textSize
         if (valueText == null) {
-            canvas.drawText(unit, padding, unitY, unitPaint)
+            canvas.drawText(ellipsize(unit, unitPaint, w - padding * 2), padding, unitY, unitPaint)
         }
 
         // Sparkline (bottom)
@@ -206,39 +218,38 @@ class MetricCardView @JvmOverloads constructor(
         }
     }
 
-    private fun drawTrend(canvas: Canvas, rightX: Float, y: Float) {
-        // Skip drawing if trend arrows are disabled
-        if (!showTrendArrows) return
-        
+    /** Returns the trend label (and sets its color), or null when hidden. */
+    private fun buildTrendText(): String? {
+        if (!showTrendArrows) return null
+
         val colorGreen = ContextCompat.getColor(context, R.color.pro_green)
         val colorRed = ContextCompat.getColor(context, R.color.pro_red)
         val colorMuted = ContextCompat.getColor(context, R.color.pro_text_muted)
 
-        // Use z-score for statistical significance
-        // |z| > 1 means outside 1 standard deviation (~68% of data)
-        // |z| > 2 means outside 2 standard deviations (~95% of data)
+        // |z| > 1: outside 1 standard deviation; |z| > 2: outside 2 standard deviations
         val absZ = abs(zScore)
-        
         val (arrow, color, showValue) = when {
-            absZ > 2f && zScore > 0 -> Triple("▲▲", colorGreen, true)   // Very high (>2σ)
-            absZ > 1f && zScore > 0 -> Triple("▲", colorGreen, true)    // High (>1σ)
-            absZ > 2f && zScore < 0 -> Triple("▼▼", colorRed, true)     // Very low (<-2σ)
-            absZ > 1f && zScore < 0 -> Triple("▼", colorRed, true)      // Low (<-1σ)
-            else -> Triple("─", colorMuted, false)                       // Within 1σ (normal)
+            absZ > 2f && zScore > 0 -> Triple("\u25B2\u25B2", colorGreen, true)
+            absZ > 1f && zScore > 0 -> Triple("\u25B2", colorGreen, true)
+            absZ > 2f && zScore < 0 -> Triple("\u25BC\u25BC", colorRed, true)
+            absZ > 1f && zScore < 0 -> Triple("\u25BC", colorRed, true)
+            else -> Triple("\u2013", colorMuted, false)
         }
-
         trendPaint.color = color
-
-        val text = if (showValue && abs(trend) >= 0.1f) {
+        return if (showValue && abs(trend) >= 0.1f) {
             val sign = if (trend > 0) "+" else ""
             "$arrow $sign${String.format(Locale.US, "%.1f", trend)}%"
         } else {
             arrow
         }
+    }
 
-        trendPaint.textAlign = Paint.Align.RIGHT
-        canvas.drawText(text, rightX, y, trendPaint)
-        trendPaint.textAlign = Paint.Align.LEFT
+    private fun ellipsize(text: String, paint: Paint, maxWidth: Float): String {
+        if (paint.measureText(text) <= maxWidth) return text
+        val ell = "\u2026"
+        var end = text.length
+        while (end > 0 && paint.measureText(text, 0, end) + paint.measureText(ell) > maxWidth) end--
+        return if (end <= 0) ell else text.substring(0, end).trimEnd() + ell
     }
 
     private fun drawSparkline(canvas: Canvas, left: Float, top: Float, width: Float, height: Float) {

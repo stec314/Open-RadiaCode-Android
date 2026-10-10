@@ -344,6 +344,9 @@ class MultiDeviceBleManager(
                                 Prefs.setLastReading(context, uSvPerHour, cps, timestampMs)
                                 Prefs.addRecentReading(context, reading)
 
+                                // Dose, device events, voice announcements, phone alarm duplication
+                                com.radiacode.ble.device.DeviceDataHub.onDecoded(context, deviceId, decoded, uSvPerHour, cps)
+
                                 // Store device metadata (battery/temperature) when available
                                 decoded.metadata?.let { meta ->
                                     Prefs.updateDeviceMetadata(

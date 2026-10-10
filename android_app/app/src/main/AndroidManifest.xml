@@ -54,6 +54,41 @@
         </activity>
 
         <activity
+            android:name=".pro.SearchActivity"
+            android:exported="false"
+            android:theme="@style/Theme.RadiaCode" />
+
+        <activity
+            android:name=".pro.SpectrumActivity"
+            android:exported="false"
+            android:theme="@style/Theme.RadiaCode" />
+
+        <activity
+            android:name=".pro.DoseActivity"
+            android:exported="false"
+            android:theme="@style/Theme.RadiaCode" />
+
+        <activity
+            android:name=".pro.EventLogActivity"
+            android:exported="false"
+            android:theme="@style/Theme.RadiaCode" />
+
+        <activity
+            android:name=".pro.InterventionActivity"
+            android:exported="false"
+            android:theme="@style/Theme.RadiaCode" />
+
+        <activity
+            android:name=".pro.DeviceControlActivity"
+            android:exported="false"
+            android:theme="@style/Theme.RadiaCode" />
+
+        <activity
+            android:name=".pro.SignalsSettingsActivity"
+            android:exported="false"
+            android:theme="@style/Theme.RadiaCode" />
+
+        <activity
             android:name=".FindDevicesActivity"
             android:exported="false" />
 

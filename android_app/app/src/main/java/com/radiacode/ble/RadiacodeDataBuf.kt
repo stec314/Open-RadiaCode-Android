@@ -27,8 +27,62 @@ internal data class DeviceMetadata(
  */
 internal data class FullDeviceData(
     val realTimeData: RealTimeData?,
-    val metadata: DeviceMetadata?
+    val metadata: DeviceMetadata?,
+    /** Accumulated dose from the latest RareData record, when present. */
+    val dose: DoseInfo? = null,
+    /** Device events (alarms, power, charging, resets) found in this buffer. */
+    val events: List<DeviceEvent> = emptyList(),
 )
+
+/** Accumulated dose as reported by the device. */
+internal data class DoseInfo(
+    /** Accumulation time in seconds since the last dose reset. */
+    val durationSeconds: Long,
+    /** Accumulated dose in Sv. */
+    val doseSv: Float,
+)
+
+/** GRP_Event record (eid=0, gid=7). */
+internal data class DeviceEvent(
+    val eventId: Int,
+    val param1: Int,
+    val flags: Int,
+) {
+    val name: String get() = DeviceEventNames.name(eventId)
+    val isAlarm: Boolean get() = eventId in DeviceEventNames.ALARM_IDS
+}
+
+internal object DeviceEventNames {
+    private val NAMES = mapOf(
+        0 to "Power off",
+        1 to "Power on",
+        2 to "Low battery shutdown",
+        3 to "Device settings changed",
+        4 to "Dose reset",
+        5 to "User event",
+        6 to "Battery empty",
+        7 to "Charging started",
+        8 to "Charging stopped",
+        9 to "Dose rate alarm 1",
+        10 to "Dose rate alarm 2",
+        11 to "Dose rate off scale",
+        12 to "Dose alarm 1",
+        13 to "Dose alarm 2",
+        14 to "Dose off scale",
+        15 to "Temperature too low",
+        16 to "Temperature too high",
+        17 to "Text message",
+        18 to "Memory snapshot",
+        19 to "Spectrum reset",
+        20 to "Count rate alarm 1",
+        21 to "Count rate alarm 2",
+        22 to "Count rate off scale",
+    )
+    val ALARM_IDS = setOf(9, 10, 11, 12, 13, 14, 20, 21, 22)
+    val LEVEL2_IDS = setOf(10, 11, 13, 14, 21, 22)
+
+    fun name(id: Int): String = NAMES[id] ?: "Event $id"
+}
 
 internal object RadiacodeDataBuf {
     /**
@@ -52,6 +106,8 @@ internal object RadiacodeDataBuf {
 
         var latestRealTime: RealTimeData? = null
         var latestMetadata: DeviceMetadata? = null
+        var latestDose: DoseInfo? = null
+        val events = ArrayList<DeviceEvent>()
 
         while (br.remaining >= 7) {
             // Ported record header: <BBBi> (seq,eid,gid,ts_offset)
@@ -106,8 +162,9 @@ internal object RadiacodeDataBuf {
                     //   charge_level (U16): encoded as percent * 100 (0-10000 -> 0-100%)
                     //   flags (U16): status flags
                     if (br.remaining < 14) break
-                    br.readU32LE()  // duration (unused - dose accumulation time in seconds)
-                    br.readF32LE()  // dose (unused - accumulated dose)
+                    val doseDuration = br.readU32LE()
+                    val doseSv = br.readF32LE()
+                    latestDose = DoseInfo(doseDuration, doseSv)
                     val temperatureRaw = br.readU16LE()
                     val chargeLevelRaw = br.readU16LE()
                     br.readU16LE()  // flags (unused)
@@ -140,7 +197,10 @@ internal object RadiacodeDataBuf {
                 eid == 0 && gid == 7 -> {
                     // Event: <BBH>
                     if (br.remaining < 4) break
-                    br.readBytes(4)
+                    val ev = br.readU8()
+                    val p1 = br.readU8()
+                    val evFlags = br.readU16LE()
+                    events.add(DeviceEvent(ev, p1, evFlags))
                 }
 
                 eid == 0 && (gid == 8 || gid == 9) -> {
@@ -173,6 +233,6 @@ internal object RadiacodeDataBuf {
             }
         }
 
-        return FullDeviceData(latestRealTime, latestMetadata)
+        return FullDeviceData(latestRealTime, latestMetadata, latestDose, events)
     }
 }

@@ -11,8 +11,8 @@ android {
         applicationId = "com.radiacode.ble"
         minSdk = 26
         targetSdk = 34
-        versionCode = 111
-        versionName = "1.37"
+        versionCode = 112
+        versionName = "1.38"
     }
 
     // The repo’s audio files live in app/audio/. Copy any provided sound assets into res/raw
@@ -78,6 +78,11 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+
+    testOptions {
+        // Protocol decoders use android.util.Log in a few places; return defaults instead of throwing.
+        unitTests.isReturnDefaultValues = true
+    }
 }
 
 dependencies {
@@ -93,4 +98,6 @@ dependencies {
     
     // EXIF interface for photo geotagging
     implementation("androidx.exifinterface:exifinterface:1.3.7")
+
+    testImplementation("junit:junit:4.13.2")
 }

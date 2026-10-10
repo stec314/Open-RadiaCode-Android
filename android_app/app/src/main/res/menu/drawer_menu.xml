@@ -26,4 +26,34 @@
             android:icon="@android:drawable/ic_menu_save"
             android:title="Export" />
     </group>
+    <group android:id="@+id/nav_group_instrument" android:checkableBehavior="none">
+        <item
+            android:id="@+id/nav_search"
+            android:icon="@drawable/ic_nav_search"
+            android:title="Search" />
+        <item
+            android:id="@+id/nav_spectrum"
+            android:icon="@drawable/ic_nav_spectrum"
+            android:title="Spectrum" />
+        <item
+            android:id="@+id/nav_dose"
+            android:icon="@drawable/ic_nav_dose"
+            android:title="Dose" />
+        <item
+            android:id="@+id/nav_event_log"
+            android:icon="@drawable/ic_nav_log"
+            android:title="Event log" />
+        <item
+            android:id="@+id/nav_intervention"
+            android:icon="@drawable/ic_nav_mission"
+            android:title="Intervention" />
+        <item
+            android:id="@+id/nav_device_control"
+            android:icon="@drawable/ic_nav_control"
+            android:title="Device control" />
+        <item
+            android:id="@+id/nav_signals"
+            android:icon="@drawable/ic_nav_signals"
+            android:title="Signals and privacy" />
+    </group>
 </menu>

@@ -97,7 +97,7 @@ object Prefs {
     private const val KEY_VEGA_TTS_ENABLED = "vega_tts_enabled"
     private const val KEY_VEGA_TTS_API_URL = "vega_tts_api_url"
     private const val KEY_VEGA_TTS_COOLDOWN_MS = "vega_tts_cooldown_ms"
-    private const val DEFAULT_VEGA_TTS_API_URL = "http://99.122.58.29:443"
+    private const val DEFAULT_VEGA_TTS_API_URL = ""  // no default server: remote voice is opt-in
     private const val DEFAULT_VEGA_TTS_COOLDOWN_MS = 30000L  // 30 seconds between voice alerts
     
     // Statistical Intelligence (VEGA) Settings keys
@@ -2327,8 +2327,10 @@ object Prefs {
      * Get the VEGA TTS API URL.
      */
     fun getVegaTtsApiUrl(context: Context): String {
-        return context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+        val v = context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
             .getString(KEY_VEGA_TTS_API_URL, DEFAULT_VEGA_TTS_API_URL) ?: DEFAULT_VEGA_TTS_API_URL
+        // Drop the old hard-coded plain-HTTP server stored by earlier versions
+        return if (v.contains("99.122.58.29")) "" else v
     }
     
     fun setVegaTtsApiUrl(context: Context, url: String) {

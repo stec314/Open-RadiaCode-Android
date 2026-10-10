@@ -30,7 +30,6 @@ object VegaTTS {
     private const val TAG = "VegaTTS"
     
     // API Configuration - can be updated via Prefs later
-    private const val DEFAULT_API_URL = "http://99.122.58.29:443"
     private const val TIMEOUT_MS = 30_000 // 30 seconds max
     
     private var executor: ExecutorService? = null
@@ -96,6 +95,15 @@ object VegaTTS {
             return
         }
         
+        // Privacy: the remote voice server is opt-in and HTTPS only; otherwise speak on the phone.
+        val remoteUrl = Prefs.getVegaTtsApiUrl(context)
+        if (!com.radiacode.ble.device.ProSettings.remoteVoiceEnabled(context) ||
+            !com.radiacode.ble.device.ProSettings.isHttps(remoteUrl)) {
+            com.radiacode.ble.device.LocalVoice.speak(context, text)
+            onComplete?.invoke()
+            return
+        }
+
         // Don't interrupt if already speaking (queue behavior could be added later)
         if (isSpeaking.get()) {
             Log.d(TAG, "Already speaking, ignoring new request")

@@ -9,17 +9,26 @@ internal object RadiacodeProtocol {
     val WRITE_UUID = java.util.UUID.fromString("e63215e6-7003-49d8-96b0-b024798fb901")
     val NOTIFY_UUID = java.util.UUID.fromString("e63215e7-7003-49d8-96b0-b024798fb901")
 
+    const val COMMAND_GET_STATUS = 0x0005
     const val COMMAND_SET_EXCHANGE = 0x0007
+    const val COMMAND_GET_VERSION = 0x000A
+    const val COMMAND_GET_SERIAL = 0x000B
+    const val COMMAND_RD_VIRT_SFR = 0x0824
+    const val COMMAND_WR_VIRT_STRING = 0x0827
+    const val COMMAND_RD_VIRT_SFR_BATCH = 0x082A
     // cdump/radiacode: COMMAND.SET_TIME = 0x0A04
     const val COMMAND_SET_TIME = 0x0A04
     const val COMMAND_WR_VIRT_SFR = 0x0825
     const val COMMAND_RD_VIRT_STRING = 0x0826
 
+    const val VS_CONFIGURATION = 0x0002
+    const val VS_SERIAL_NUMBER = 0x0008
     const val VS_DATA_BUF = 0x0100
     const val VS_SPECTRUM = 0x0200        // Current spectrum data (1024 channels)
     const val VS_ENERGY_CALIB = 0x0202    // Energy calibration coefficients
     const val VS_SPEC_ACCUM = 0x0205      // Accumulated spectrum
     const val VS_SPEC_DIFF = 0x0206       // Differential spectrum (recent counts)
+    const val VS_SPEC_RESET = 0x0207      // Write to reset the device spectrum
     const val VSFR_DEVICE_TIME = 0x0504
 
     fun buildRequest(command: Int, seq: Int, args: ByteArray): ByteArray {
@@ -48,6 +57,22 @@ internal object RadiacodeProtocol {
         val out = ByteArray(4)
         val bb = ByteBuffer.wrap(out).order(ByteOrder.LITTLE_ENDIAN)
         bb.putInt((v and 0xFFFF_FFFFL).toInt())
+        return out
+    }
+
+    fun packF32LE(v: Float): ByteArray {
+        val out = ByteArray(4)
+        ByteBuffer.wrap(out).order(ByteOrder.LITTLE_ENDIAN).putFloat(v)
+        return out
+    }
+
+    fun concat(vararg parts: ByteArray): ByteArray {
+        val out = ByteArray(parts.sumOf { it.size })
+        var off = 0
+        for (p in parts) {
+            System.arraycopy(p, 0, out, off, p.size)
+            off += p.size
+        }
         return out
     }
 

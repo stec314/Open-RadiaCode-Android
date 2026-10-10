@@ -9,6 +9,10 @@ import android.bluetooth.BluetoothProfile
 import android.content.Context
 import android.os.Build
 import android.util.Log
+import com.radiacode.ble.device.FirmwareInfo
+import com.radiacode.ble.device.ResponseParsers
+import com.radiacode.ble.device.SpectrumCodec
+import com.radiacode.ble.device.Vsfr
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -495,7 +499,107 @@ internal class RadiacodeBleClient(
         }
     }
 
+    // Requests are serialized: callers from the poll loop, spectrum reader and UI (device control)
+    // can overlap, and the device only handles one request at a time. Each request starts when the
+    // previous one has settled, and its timeout only starts once it is actually sent.
+    private val queueLock = Any()
+    private var queueTail: CompletableFuture<Unit> = CompletableFuture.completedFuture(Unit)
+
     private fun execute(command: Int, args: ByteArray): CompletableFuture<ByteArray> {
+        synchronized(queueLock) {
+            val f = queueTail
+                .handle { _, _ -> Unit }
+                .thenCompose { executeNow(command, args) }
+            queueTail = f.handle { _, _ -> Unit }
+            return f
+        }
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Device control and extended reads
+    // ---------------------------------------------------------------------------------------------
+
+    /** Raw virtual string read. */
+    fun readVirtString(vs: Int): CompletableFuture<ByteArray> =
+        execute(RadiacodeProtocol.COMMAND_RD_VIRT_STRING, RadiacodeProtocol.packU32LE(vs.toLong()))
+            .thenApply { ResponseParsers.virtString(it, "VS 0x${vs.toString(16)}") }
+
+    /** Batch read of register words; null entries were flagged invalid by the device. */
+    fun readVsfrs(ids: List<Int>): CompletableFuture<List<Int?>> {
+        if (ids.isEmpty()) return CompletableFuture.completedFuture(emptyList())
+        return execute(RadiacodeProtocol.COMMAND_RD_VIRT_SFR_BATCH, ResponseParsers.batchReadRequest(ids))
+            .thenApply { ResponseParsers.batchRead(it, ids.size) }
+    }
+
+    /** Write a single register (WR_VIRT_SFR: <I id> [<I value>]); completes with true on retcode 1. */
+    fun writeVsfr(id: Int, value: Int?): CompletableFuture<Boolean> {
+        val payload = if (value == null) {
+            RadiacodeProtocol.packU32LE(id.toLong())
+        } else {
+            RadiacodeProtocol.concat(RadiacodeProtocol.packU32LE(id.toLong()), RadiacodeProtocol.packI32LE(value))
+        }
+        return execute(RadiacodeProtocol.COMMAND_WR_VIRT_SFR, payload)
+            .thenApply { ResponseParsers.retcodeOk(it) }
+    }
+
+    /** Accumulated spectrum since the last device spectrum reset (VS.SPEC_ACCUM). */
+    fun readAccumulatedSpectrum(): CompletableFuture<SpectrumData> =
+        readVirtString(RadiacodeProtocol.VS_SPEC_ACCUM).thenApply { toSpectrumData(it) }
+
+    /** Current device spectrum (VS.SPECTRUM) decoded with the shared codec. */
+    fun readDeviceSpectrum(): CompletableFuture<SpectrumData> =
+        readVirtString(RadiacodeProtocol.VS_SPECTRUM).thenApply { toSpectrumData(it) }
+
+    private fun toSpectrumData(payload: ByteArray): SpectrumData {
+        val d = SpectrumCodec.decodeSpectrum(payload)
+        return SpectrumData(d.durationSeconds, d.a0, d.a1, d.a2, d.counts, System.currentTimeMillis())
+    }
+
+    /** Reset the spectrum accumulated on the device. */
+    fun resetSpectrum(): CompletableFuture<Boolean> {
+        val payload = RadiacodeProtocol.concat(
+            RadiacodeProtocol.packU32LE(RadiacodeProtocol.VS_SPEC_RESET.toLong()),
+            RadiacodeProtocol.packU32LE(0)
+        )
+        return execute(RadiacodeProtocol.COMMAND_WR_VIRT_STRING, payload).thenApply { ResponseParsers.retcodeOk(it) }
+    }
+
+    /** Reset the accumulated dose on the device. */
+    fun resetDose(): CompletableFuture<Boolean> = writeVsfr(Vsfr.DOSE_RESET.id, null)
+
+    /** Write energy calibration coefficients to the device. */
+    fun writeEnergyCalibration(a0: Float, a1: Float, a2: Float): CompletableFuture<Boolean> =
+        execute(
+            RadiacodeProtocol.COMMAND_WR_VIRT_STRING,
+            SpectrumCodec.calibrationWritePayload(RadiacodeProtocol.VS_ENERGY_CALIB, a0, a1, a2)
+        ).thenApply { ResponseParsers.retcodeOk(it) }
+
+    fun readFirmwareVersion(): CompletableFuture<FirmwareInfo> =
+        execute(RadiacodeProtocol.COMMAND_GET_VERSION, ByteArray(0)).thenApply { ResponseParsers.firmwareVersion(it) }
+
+    fun readHardwareSerial(): CompletableFuture<String> =
+        execute(RadiacodeProtocol.COMMAND_GET_SERIAL, ByteArray(0)).thenApply { ResponseParsers.hardwareSerial(it) }
+
+    fun readSerialNumber(): CompletableFuture<String> =
+        readVirtString(RadiacodeProtocol.VS_SERIAL_NUMBER).thenApply { ResponseParsers.ascii(it) }
+
+    fun readConfiguration(): CompletableFuture<Map<String, String>> =
+        readVirtString(RadiacodeProtocol.VS_CONFIGURATION).thenApply { ResponseParsers.configuration(it) }
+
+    /** Set the device clock (SET_TIME) and restart its time base, as done at connect. */
+    fun syncClock(now: LocalDateTime): CompletableFuture<Boolean> {
+        val payload = RadiacodeProtocol.packSetTimePayloadLocal(
+            day = now.dayOfMonth, month = now.monthValue, year = now.year,
+            hour = now.hour, minute = now.minute, second = now.second,
+        )
+        return execute(RadiacodeProtocol.COMMAND_SET_TIME, payload)
+            .thenCompose { writeVsfr(RadiacodeProtocol.VSFR_DEVICE_TIME, 0) }
+    }
+
+    /** Turn the device off (DEVICE_ON = 0). The BLE link drops afterwards. */
+    fun powerOff(): CompletableFuture<Boolean> = writeVsfr(Vsfr.DEVICE_ON.id, 0)
+
+    private fun executeNow(command: Int, args: ByteArray): CompletableFuture<ByteArray> {
         val g = gatt ?: return CompletableFuture.failedFuture(IllegalStateException("Not connected"))
         val w = writeChar ?: return CompletableFuture.failedFuture(IllegalStateException("Write char missing"))
 
