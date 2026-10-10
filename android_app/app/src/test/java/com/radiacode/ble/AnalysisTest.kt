@@ -23,13 +23,20 @@ class AnalysisTest {
         return (-a1 + sqrt(d)) / (2 * a2)
     }
 
-    /** Exponential continuum plus Gaussian peaks, with Poisson-like noise. */
-    private fun synth(peaks: List<Pair<Double, Double>>, seed: Long = 1): IntArray {
+    /**
+     * Exponential continuum plus Gaussian peaks, with Poisson-like noise. With [realistic] the
+     * low end has the detector threshold cut-off and the broad scatter hump a CsI detector shows.
+     */
+    private fun synth(peaks: List<Pair<Double, Double>>, seed: Long = 1, realistic: Boolean = false): IntArray {
         val rnd = Random(seed)
         val pf = PeakFinder()
         return IntArray(1024) { ch ->
             val e = a0 + a1 * ch + a2 * ch * ch
             var mean = 4000.0 * exp(-e / 250.0) + 30.0
+            if (realistic) {
+                mean += 9000.0 * exp(-0.5 * ((e - 70.0) / 30.0) * ((e - 70.0) / 30.0))
+                if (e < 25.0) mean *= maxOf(0.0, (e - 10.0) / 15.0)
+            }
             for ((pe, area) in peaks) {
                 val sigmaKeV = pf.fwhmKeV(pe) / 2.355
                 val keVPerCh = a1 + 2 * a2 * ch
@@ -96,5 +103,49 @@ class AnalysisTest {
         val q = CalibrationFit.fit(listOf(100.0 to 300.0, 200.0 to 610.0, 400.0 to 1260.0))!!
         assertEquals(610.0, q[0] + q[1] * 200 + q[2] * 200 * 200, 1e-6)
         assertEquals(1260.0, q[0] + q[1] * 400 + q[2] * 400 * 400, 1e-6)
+    }
+
+    private fun ids(counts: IntArray) = PeakFinder().analyze(counts, a0, a1, a2).matches.map { it.isotope.id }
+
+    @Test
+    fun radiumDialIsRadiumNotAmericiumOrBarium() {
+        val ra = listOf(77.0 to 9000.0, 186.2 to 1500.0, 242.0 to 3500.0, 295.2 to 8500.0, 351.9 to 15000.0,
+            609.3 to 14000.0, 768.4 to 1300.0, 1120.3 to 3200.0, 1238.1 to 1100.0, 1764.5 to 2400.0)
+        val found = ids(synth(ra, seed = 3, realistic = true))
+        assertTrue("Ra-226 first: $found", found.firstOrNull() == "Ra-226")
+        assertTrue("no Am-241: $found", !found.contains("Am-241"))
+        assertTrue("no Ba-133: $found", !found.contains("Ba-133"))
+        assertTrue("no U-238 without 1001 keV: $found", !found.contains("U-238"))
+    }
+
+    @Test
+    fun scatterHumpAloneIsNotAmericium() {
+        val found = ids(synth(emptyList(), seed = 11, realistic = true))
+        assertTrue("false ID on background: $found", !found.contains("Am-241"))
+    }
+
+    @Test
+    fun realAmericiumLineIsFound() {
+        val found = ids(synth(listOf(59.5 to 60000.0), seed = 5, realistic = true))
+        assertTrue("Am-241 expected: $found", found.contains("Am-241"))
+    }
+
+    @Test
+    fun bariumAloneIsBarium() {
+        val ba = listOf(81.0 to 9000.0, 276.4 to 1800.0, 302.9 to 4500.0, 356.0 to 15000.0, 383.8 to 2200.0)
+        val found = ids(synth(ba, seed = 9))
+        assertTrue("Ba-133 expected first: $found", found.firstOrNull() == "Ba-133")
+        assertTrue("no Ra-226: $found", !found.contains("Ra-226"))
+    }
+
+    @Test
+    fun radiumStableAcrossNoiseAndShorterCounts() {
+        val ra = listOf(77.0 to 9000.0, 186.2 to 1500.0, 242.0 to 3500.0, 295.2 to 8500.0, 351.9 to 15000.0,
+            609.3 to 14000.0, 768.4 to 1300.0, 1120.3 to 3200.0, 1238.1 to 1100.0, 1764.5 to 2400.0)
+        for (scale in listOf(1.0, 0.3)) for (seed in 1L..20L) {
+            val c = synth(ra.map { it.first to it.second * scale }, seed = seed, realistic = true)
+            val found = ids(c)
+            assertTrue("seed $seed scale $scale: $found", found.firstOrNull() == "Ra-226" && !found.contains("Am-241"))
+        }
     }
 }

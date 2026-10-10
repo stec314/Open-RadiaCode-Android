@@ -33,6 +33,14 @@ object ProSettings {
     fun clicksVolume(c: Context) = sp(c).getInt("click_volume", 60).coerceIn(0, 100)
     fun setClicksVolume(c: Context, v: Int) = sp(c).edit().putInt("click_volume", v.coerceIn(0, 100)).apply()
 
+    /** Averaging window for Search mode, seconds. */
+    fun averagingSeconds(c: Context) = sp(c).getInt("avg_window_s", 8).coerceIn(1, 120)
+    fun setAveragingSeconds(c: Context, v: Int) = sp(c).edit().putInt("avg_window_s", v).apply()
+
+    /** Screen opened at app start: 0 dashboard, 1 search, 2 spectrum, 3 dose, 4 intervention. */
+    fun startPage(c: Context) = sp(c).getInt("start_page", 0)
+    fun setStartPage(c: Context, v: Int) = sp(c).edit().putInt("start_page", v).apply()
+
     fun keepScreenOn(c: Context) = sp(c).getBoolean("keep_screen_on", false)
     fun setKeepScreenOn(c: Context, v: Boolean) = sp(c).edit().putBoolean("keep_screen_on", v).apply()
 

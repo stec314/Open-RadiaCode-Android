@@ -112,7 +112,10 @@ class SpectrumActivity : ProActivity() {
 
     private fun readDevice(quiet: Boolean) {
         device(timeoutSec = 20, op = { c -> c.readDeviceSpectrum().thenCombine(c.readSerialNumber().exceptionally { "" }) { s, sn -> s to sn } },
-            onError = { if (!quiet) toast(it) }) { (s, sn) ->
+            onError = {
+                if (current == null) info.text = "Could not read the device spectrum: $it\nIs the RadiaCode connected to this app? It accepts one connection at a time."
+                if (!quiet) toast(it)
+            }) { (s, sn) ->
             current = fromDevice(s, sn)
             redraw(resetView = false)
         }

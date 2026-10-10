@@ -127,6 +127,8 @@ class DeviceControlActivity : ProActivity() {
         divider(signals)
         boolRow(signals, "Vibration", null, Vsfr.VIBRO_ON)
         flagsBlock(signals, "Vibrate on", Vsfr.VIBRO_CTRL)
+        divider(signals)
+        boolRow(signals, "LEDs", null, Vsfr.LEDS_ON)
 
         // ---- Display -----------------------------------------------------------------------------
         val display = card(column, "Display")
@@ -173,6 +175,10 @@ class DeviceControlActivity : ProActivity() {
         val actions = card(column, "Actions")
         buttons(actions, 2,
             button("Sync time", Btn.SECONDARY) { syncTime() },
+            button("Find the device", Btn.SECONDARY) {
+                // Experimental: PLAY_SIGNAL is listed by the reference library without documented values
+                simpleAction("Find signal") { it.writeVsfr(Vsfr.PLAY_SIGNAL.id, 1) }
+            },
             button("Reset dose", Btn.DANGER) {
                 confirm("Reset dose", "Set the accumulated dose on the device to zero? This cannot be undone.", "Reset") {
                     simpleAction("Dose reset") { it.resetDose() }

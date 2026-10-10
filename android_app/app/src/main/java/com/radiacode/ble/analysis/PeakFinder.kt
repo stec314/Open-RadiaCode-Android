@@ -21,7 +21,9 @@ class PeakFinder(
     /** Relative FWHM at 662 keV (CsI(Tl) RadiaCode 10x/110 ~0.084, GAGG ~0.074). */
     private val resolutionAt662: Double = 0.084,
     private val minSignificance: Double = 4.0,
-    private val minEnergyKeV: Double = 25.0,
+    private val minEnergyKeV: Double = 30.0,
+    /** Peaks wider than this multiple of the expected FWHM are treated as continuum. */
+    private val maxWidthFactor: Double = 2.0,
 ) {
     data class Peak(
         val channel: Double,
@@ -102,7 +104,13 @@ class PeakFinder(
                 }
                 val centroid = if (sw > 0) sx / sw else c.toDouble()
                 val e = energy(centroid)
-                peaks.add(Peak(centroid, e, net[c], unc[c], s, fwhmKeV(e)))
+                // Reject broad continuum features (low-energy hump, Compton edges) that pass the
+                // significance test but are much wider than the detector resolution allows.
+                val widthKeV = measuredFwhmKeV(counts, c, w) * keVPerChannel(c.toDouble())
+                val expected = fwhmKeV(e)
+                if (widthKeV <= 0.0 || widthKeV <= maxWidthFactor * expected) {
+                    peaks.add(Peak(centroid, e, net[c], unc[c], s, expected))
+                }
                 c += max(1, w) // skip the rest of this peak
             } else {
                 c++
@@ -119,26 +127,108 @@ class PeakFinder(
         return merged
     }
 
+    /**
+     * Full width at half maximum in channels of the net peak around [c], using a linear
+     * baseline through the side windows. Returns -1 when it cannot be measured.
+     */
+    private fun measuredFwhmChannels(counts: IntArray, c: Int, w: Int): Double {
+        val n = counts.size
+        val span = 4 * max(w, 2)
+        val lo = c - span
+        val hi = c + span
+        if (lo < 1 || hi >= n - 1) return -1.0
+        fun sm(i: Int) = (counts[i - 1] + 2.0 * counts[i] + counts[i + 1]) / 4.0
+        val bw = max(2, w / 2)
+        var left = 0.0
+        for (i in lo until lo + bw) left += sm(i)
+        left /= bw
+        var right = 0.0
+        for (i in hi - bw + 1..hi) right += sm(i)
+        right /= bw
+        fun base(i: Int) = left + (right - left) * (i - lo).toDouble() / (hi - lo)
+        var top = c
+        for (i in c - w..c + w) if (sm(i) - base(i) > sm(top) - base(top)) top = i
+        val height = sm(top) - base(top)
+        if (height <= 0) return -1.0
+        val half = height / 2.0
+        var l = top
+        while (l > lo && sm(l) - base(l) > half) l--
+        var r = top
+        while (r < hi && sm(r) - base(r) > half) r++
+        if (l == lo || r == hi) return (hi - lo).toDouble() // never came down: very broad
+        return (r - l).toDouble()
+    }
+
+    private fun measuredFwhmKeV(counts: IntArray, c: Int, w: Int): Double = measuredFwhmChannels(counts, c, w)
+
+    /**
+     * Library matching with explanation: isotopes are accepted best-first, and the peaks an
+     * accepted isotope explains no longer count as evidence for the others. This keeps, for
+     * example, Ba-133 (356/303/81 keV) from being reported on a radium source whose
+     * Pb-214 lines (352/295 keV) and lead x-rays sit at the same places.
+     */
     fun match(peaks: List<Peak>): List<IsotopeMatch> {
-        val out = ArrayList<IsotopeMatch>()
+        data class Cand(val iso: IsotopeLibrary.Isotope, val lines: List<LineMatch>)
+        val cands = ArrayList<Cand>()
         for (iso in IsotopeLibrary.ALL_ISOTOPES) {
-            val lines = iso.gammaLines.filter { it.energyKeV >= minEnergyKeV && it.intensity >= 0.02f }
+            val primary = iso.primaryLine
+            val lines = iso.gammaLines.filter { it.energyKeV >= minEnergyKeV && (it.intensity >= 0.02f || it == primary) }
             if (lines.isEmpty()) continue
             val matches = lines.map { line ->
-                val tol = max(0.6 * fwhmKeV(line.energyKeV.toDouble()), 4.0)
+                val tol = max(0.5 * fwhmKeV(line.energyKeV.toDouble()), 4.0)
                 val p = peaks.filter { abs(it.energyKeV - line.energyKeV) <= tol }.maxByOrNull { it.significance }
                 LineMatch(line, p)
             }
-            val primary = iso.primaryLine
-            val primaryHit = matches.firstOrNull { it.line == primary }?.peak != null
-            if (!primaryHit) continue
-            val totalIntensity = lines.sumOf { it.intensity.toDouble() }
-            val matchedIntensity = matches.filter { it.peak != null }.sumOf { it.line.intensity.toDouble() }
-            val coverage = if (totalIntensity > 0) matchedIntensity / totalIntensity else 0.0
-            val strength = matches.mapNotNull { it.peak?.significance }.maxOrNull() ?: 0.0
-            val score = (coverage * 0.7 + min(strength / 20.0, 1.0) * 0.3).coerceIn(0.0, 1.0)
-            out.add(IsotopeMatch(iso, score, matches))
+            if (matches.none { it.peak != null }) continue
+            cands.add(Cand(iso, matches))
         }
-        return out.sortedByDescending { it.score }
+
+        val claimed = HashSet<Peak>()
+        val accepted = ArrayList<IsotopeMatch>()
+        val remaining = cands.toMutableList()
+        while (remaining.isNotEmpty()) {
+            // Pick the isotope that explains the most evidence (coverage x summed significance),
+            // so a source with many matching lines wins over one that fits a subset of them.
+            var best: Triple<Cand, Double, Double>? = null
+            for (cand in remaining) {
+                val sc = score(cand.iso, cand.lines, claimed) ?: continue
+                if (sc < MIN_SCORE) continue
+                val free = cand.lines.filter { it.peak != null && it.peak !in claimed }
+                val key = sc * free.sumOf { it.peak!!.significance }
+                if (best == null || key > best.third) best = Triple(cand, sc, key)
+            }
+            val b = best ?: break
+            accepted.add(IsotopeMatch(b.first.iso, b.second, b.first.lines))
+            b.first.lines.mapNotNullTo(claimed) { it.peak }
+            remaining.remove(b.first)
+        }
+        return accepted
+    }
+
+    /** Score from unexplained peaks only; null when the primary line has no free evidence. */
+    private fun score(iso: IsotopeLibrary.Isotope, lines: List<LineMatch>, claimed: Set<Peak>): Double? {
+        // A peak sitting on the shoulder of an explained peak is not independent evidence
+        fun shoulder(p: Peak) = claimed.any { it !== p && abs(it.energyKeV - p.energyKeV) < it.fwhmKeV }
+        val free = lines.filter { it.peak != null && it.peak !in claimed && !shoulder(it.peak) }
+        // Single-line isotopes rely on one peak: demand a clearly significant one
+        // (higher bar below 120 keV, where scatter and lead x-rays shape the continuum)
+        if (lines.size == 1) {
+            val p = free.firstOrNull()?.peak ?: return null
+            val need = if (p.energyKeV < 120.0) 10.0 else 6.0
+            if (p.significance < need) return null
+        }
+        val primaryFree = free.any { it.line == iso.primaryLine }
+        // Accept without a free primary only if two or more other lines are unexplained
+        if (!primaryFree && free.size < 2) return null
+        if (lines.firstOrNull { it.line == iso.primaryLine }?.peak == null) return null
+        val total = lines.sumOf { it.line.intensity.toDouble() }
+        val found = free.sumOf { it.line.intensity.toDouble() }
+        val coverage = if (total > 0) found / total else 0.0
+        val strength = free.mapNotNull { it.peak?.significance }.maxOrNull() ?: 0.0
+        return (coverage * 0.7 + min(strength / 20.0, 1.0) * 0.3).coerceIn(0.0, 1.0)
+    }
+
+    companion object {
+        const val MIN_SCORE = 0.25
     }
 }

@@ -102,11 +102,13 @@ object IsotopeLibrary {
             name = "Uranium-238 Chain",
             category = Category.NATURAL,
             gammaLines = listOf(
-                // Bi-214 (daughter) - most diagnostic
-                GammaLine(609.3f, 0.461f, isPrimary = true),
+                // Pa-234m: the line that separates uranium from radium alone (weak, needs long counts)
+                GammaLine(1001.0f, 0.0084f, isPrimary = true),
+                GammaLine(766.4f, 0.0032f),
+                // Bi-214 / Pb-214 daughters (shared with Ra-226)
+                GammaLine(609.3f, 0.461f),
                 GammaLine(1120.3f, 0.150f),
                 GammaLine(1764.5f, 0.153f),
-                // Pb-214 (daughter)
                 GammaLine(295.2f, 0.192f),
                 GammaLine(351.9f, 0.371f)
             ),
@@ -120,10 +122,18 @@ object IsotopeLibrary {
             name = "Radium-226",
             category = Category.NATURAL,
             gammaLines = listOf(
-                GammaLine(186.2f, 0.036f, isPrimary = true),
-                // Also shows U-238 chain daughters
-                GammaLine(609.3f, 0.461f), // Bi-214
-                GammaLine(351.9f, 0.371f)  // Pb-214
+                // Daughters dominate the spectrum of a sealed radium source (dials, clocks)
+                GammaLine(609.3f, 0.455f, isPrimary = true), // Bi-214
+                GammaLine(351.9f, 0.356f),                   // Pb-214
+                GammaLine(295.2f, 0.184f),                   // Pb-214
+                GammaLine(242.0f, 0.073f),                   // Pb-214
+                GammaLine(1120.3f, 0.149f),                  // Bi-214
+                GammaLine(1764.5f, 0.153f),                  // Bi-214
+                GammaLine(1238.1f, 0.058f),                  // Bi-214
+                GammaLine(768.4f, 0.049f),                   // Bi-214
+                GammaLine(2204.1f, 0.049f),                  // Bi-214
+                GammaLine(186.2f, 0.036f),                   // Ra-226 itself
+                GammaLine(77.0f, 0.10f)                      // Pb K x-rays (conversion and shielding)
             ),
             halfLifeSeconds = 5.05e10, // 1600 years
             parentChain = "U-238",

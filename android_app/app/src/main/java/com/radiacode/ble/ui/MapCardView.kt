@@ -118,66 +118,7 @@ class MapCardView @JvmOverloads constructor(
      * Create a tile source for the given map theme.
      */
     private fun createTileSource(theme: Prefs.MapTheme): XYTileSource {
-        return when (theme) {
-            // Home theme uses Dark Matter - already has correct gray background
-            // Color filter makes roads/labels pop green
-            Prefs.MapTheme.HOME -> XYTileSource(
-                // Home base layer: Dark Matter without labels.
-                // Labels are drawn via a separate overlay (dark_only_labels).
-                "CartoDB_DarkMatter_NoLabels_Home", 0, 20, 256, ".png",
-                arrayOf(
-                    "https://a.basemaps.cartocdn.com/dark_nolabels/",
-                    "https://b.basemaps.cartocdn.com/dark_nolabels/",
-                    "https://c.basemaps.cartocdn.com/dark_nolabels/"
-                )
-            )
-            Prefs.MapTheme.DARK_MATTER -> XYTileSource(
-                "CartoDB_DarkMatter", 0, 19, 256, ".png",
-                arrayOf(
-                    "https://a.basemaps.cartocdn.com/dark_all/",
-                    "https://b.basemaps.cartocdn.com/dark_all/",
-                    "https://c.basemaps.cartocdn.com/dark_all/"
-                )
-            )
-            Prefs.MapTheme.DARK_GRAY -> XYTileSource(
-                "CartoDB_DarkGray", 0, 19, 256, ".png",
-                arrayOf(
-                    "https://a.basemaps.cartocdn.com/dark_nolabels/",
-                    "https://b.basemaps.cartocdn.com/dark_nolabels/",
-                    "https://c.basemaps.cartocdn.com/dark_nolabels/"
-                )
-            )
-            Prefs.MapTheme.VOYAGER -> XYTileSource(
-                "CartoDB_Voyager", 0, 19, 256, ".png",
-                arrayOf(
-                    "https://a.basemaps.cartocdn.com/rastertiles/voyager/",
-                    "https://b.basemaps.cartocdn.com/rastertiles/voyager/",
-                    "https://c.basemaps.cartocdn.com/rastertiles/voyager/"
-                )
-            )
-            Prefs.MapTheme.POSITRON -> XYTileSource(
-                "CartoDB_Positron", 0, 19, 256, ".png",
-                arrayOf(
-                    "https://a.basemaps.cartocdn.com/light_all/",
-                    "https://b.basemaps.cartocdn.com/light_all/",
-                    "https://c.basemaps.cartocdn.com/light_all/"
-                )
-            )
-            Prefs.MapTheme.TONER -> XYTileSource(
-                "Stamen_Toner", 0, 18, 256, ".png",
-                arrayOf(
-                    "https://tiles.stadiamaps.com/tiles/stamen_toner/"
-                )
-            )
-            Prefs.MapTheme.STANDARD -> XYTileSource(
-                "OpenStreetMap", 0, 19, 256, ".png",
-                arrayOf(
-                    "https://a.tile.openstreetmap.org/",
-                    "https://b.tile.openstreetmap.org/",
-                    "https://c.tile.openstreetmap.org/"
-                )
-            )
-        }
+        return com.radiacode.ble.MapTiles.source(theme)
     }
 
     private fun createHomeLabelsTileSource(): XYTileSource {
@@ -331,21 +272,9 @@ class MapCardView @JvmOverloads constructor(
     }
 
     private fun updateHomeLabelsOverlay(theme: Prefs.MapTheme) {
-        homeLabelsOverlay?.let { existing ->
-            mapView.overlays.remove(existing)
-        }
+        // The separate labels layer came from CARTO, which now requires an API key.
+        homeLabelsOverlay?.let { existing -> mapView.overlays.remove(existing) }
         homeLabelsOverlay = null
-
-        if (theme != Prefs.MapTheme.HOME) return
-
-        val provider = MapTileProviderBasic(context, createHomeLabelsTileSource())
-        val overlay = TilesOverlay(provider, context)
-        overlay.loadingBackgroundColor = Color.TRANSPARENT
-        overlay.loadingLineColor = Color.TRANSPARENT
-
-        // Insert below our data overlays (hexagons/marker), above base tiles.
-        mapView.overlays.add(0, overlay)
-        homeLabelsOverlay = overlay
     }
     
     /**
@@ -369,32 +298,7 @@ class MapCardView @JvmOverloads constructor(
      * - Labels layer (dark_only_labels): brighter fluorescent green text with baked-in halo
      */
     private fun applyThemeColorFilter(theme: Prefs.MapTheme) {
-        val baseTilesOverlay = mapView.overlayManager.tilesOverlay
-        
-        if (theme == Prefs.MapTheme.HOME) {
-            // Base layer: boost green based on brightness and slightly reduce opacity
-            // so the MapView background (@color/pro_surface) participates in the final perceived gray.
-            val baseMatrix = ColorMatrix(floatArrayOf(
-                1.0f,  0.0f, 0.0f, 0f,    0f,   // R: keep
-                0.2f,  1.6f, 0.2f, 0f,   -7f,   // G: boost, keep darks subdued
-                0.0f,  0.0f, 1.0f, 0f,    0f,   // B: keep
-                0.0f,  0.0f, 0.0f, 0.85f, 0f    // A: blend toward MapView background
-            ))
-            baseTilesOverlay.setColorFilter(ColorMatrixColorFilter(baseMatrix))
-
-            // Labels layer: stronger fluorescent green; keep halo/outline dark (no offsets).
-            val labelsMatrix = ColorMatrix(floatArrayOf(
-                0.15f, 0.0f,  0.0f, 0f, 0f,
-                0.0f,  2.4f,  0.0f, 0f, 0f,
-                0.0f,  0.0f,  0.15f,0f, 0f,
-                0.0f,  0.0f,  0.0f, 1f, 0f
-            ))
-            homeLabelsOverlay?.setColorFilter(ColorMatrixColorFilter(labelsMatrix))
-        } else {
-            // Clear any color filter for other themes
-            baseTilesOverlay.setColorFilter(null)
-            homeLabelsOverlay?.setColorFilter(null)
-        }
+        mapView.overlayManager.tilesOverlay.setColorFilter(com.radiacode.ble.MapTiles.filter(theme))
     }
     
     /**

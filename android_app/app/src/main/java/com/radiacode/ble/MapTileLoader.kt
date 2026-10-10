@@ -156,8 +156,8 @@ object MapTileLoader {
         Log.d(TAG, "Loaded $tilesLoaded of ~$totalTilesNeeded tiles from cache")
         
         // Apply color filter for HOME theme
-        if (theme == Prefs.MapTheme.HOME && tilesLoaded > 0) {
-            applyHomeThemeFilter(output)
+        if (tilesLoaded > 0) {
+            MapTiles.applyToBitmap(theme, output)
         }
         
         // Always trigger async fetch if any tiles are missing to complete the cache
@@ -284,10 +284,7 @@ object MapTileLoader {
             }
         }
         
-        // Apply color filter for HOME theme
-        if (theme == Prefs.MapTheme.HOME) {
-            applyHomeThemeFilter(output)
-        }
+        MapTiles.applyToBitmap(theme, output)
         
         return output
     }
@@ -366,41 +363,7 @@ object MapTileLoader {
     }
     
     private fun getTileUrlPatterns(theme: Prefs.MapTheme): Array<String> {
-        return when (theme) {
-            Prefs.MapTheme.HOME -> arrayOf(
-                "https://a.basemaps.cartocdn.com/dark_all/",
-                "https://b.basemaps.cartocdn.com/dark_all/",
-                "https://c.basemaps.cartocdn.com/dark_all/"
-            )
-            Prefs.MapTheme.DARK_MATTER -> arrayOf(
-                "https://a.basemaps.cartocdn.com/dark_all/",
-                "https://b.basemaps.cartocdn.com/dark_all/",
-                "https://c.basemaps.cartocdn.com/dark_all/"
-            )
-            Prefs.MapTheme.DARK_GRAY -> arrayOf(
-                "https://a.basemaps.cartocdn.com/dark_nolabels/",
-                "https://b.basemaps.cartocdn.com/dark_nolabels/",
-                "https://c.basemaps.cartocdn.com/dark_nolabels/"
-            )
-            Prefs.MapTheme.VOYAGER -> arrayOf(
-                "https://a.basemaps.cartocdn.com/rastertiles/voyager/",
-                "https://b.basemaps.cartocdn.com/rastertiles/voyager/",
-                "https://c.basemaps.cartocdn.com/rastertiles/voyager/"
-            )
-            Prefs.MapTheme.POSITRON -> arrayOf(
-                "https://a.basemaps.cartocdn.com/light_all/",
-                "https://b.basemaps.cartocdn.com/light_all/",
-                "https://c.basemaps.cartocdn.com/light_all/"
-            )
-            Prefs.MapTheme.TONER -> arrayOf(
-                "https://tiles.stadiamaps.com/tiles/stamen_toner/"
-            )
-            Prefs.MapTheme.STANDARD -> arrayOf(
-                "https://a.tile.openstreetmap.org/",
-                "https://b.tile.openstreetmap.org/",
-                "https://c.tile.openstreetmap.org/"
-            )
-        }
+        return MapTiles.urls(theme)
     }
     
     private fun getThemeBackgroundColor(theme: Prefs.MapTheme): Int {

@@ -2,8 +2,8 @@ package com.radiacode.ble.pro
 
 import android.os.Bundle
 import android.widget.LinearLayout
-import com.radiacode.ble.RadiaCodeForegroundService
 import com.radiacode.ble.device.AlarmUnits
+import com.radiacode.ble.device.DeviceDataHub
 import com.radiacode.ble.device.DeviceGateway
 import com.radiacode.ble.device.ProSettings
 import com.radiacode.ble.device.Vsfr
@@ -25,7 +25,7 @@ class SearchActivity : ProActivity() {
     private var cpsMax = 0.0
     private var doseMax = 0.0
     private var samples = 0
-    private val tau = 8.0 // seconds, exponential averaging
+    private val tau: Double get() = ProSettings.averagingSeconds(this).toDouble()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -60,11 +60,34 @@ class SearchActivity : ProActivity() {
         stats = text("Waiting for readings...", 13f, cMuted, mono = true)
         card(column).addView(stats)
 
-        listen(RadiaCodeForegroundService.ACTION_READING) { i ->
-            val cps = i.getFloatExtra(RadiaCodeForegroundService.EXTRA_CPS, Float.NaN).toDouble()
-            val usv = i.getFloatExtra(RadiaCodeForegroundService.EXTRA_USV_H, Float.NaN).toDouble()
-            if (!cps.isNaN() && !usv.isNaN()) onReading(cps, usv * 1000.0)
+        // Readings come from the poll loop through the data hub; a 1 s tick also reports when
+        // nothing arrives (device busy with the official app, out of range, service stopped).
+        ui.post(tick)
+    }
+
+    private var lastSeen = 0L
+    private val tick = object : Runnable {
+        override fun run() {
+            val t = DeviceDataHub.lastUpdateMs
+            val age = System.currentTimeMillis() - t
+            if (t > 0 && t != lastSeen && age < 5_000) {
+                lastSeen = t
+                onReading(DeviceDataHub.lastCps.toDouble(), DeviceDataHub.lastDoseRateUsvH * 1000.0)
+            } else if (t == 0L || age >= 5_000) {
+                stats.text = when {
+                    !DeviceGateway.isServiceRunning -> "Connection service is not running. Open the dashboard to start it."
+                    DeviceGateway.connectedDevices().isEmpty() -> "No device connected. The RadiaCode accepts one connection: close the official app."
+                    else -> "No readings for ${age / 1000} s"
+                }
+                stats.setTextColor(cYellow)
+            }
+            ui.postDelayed(this, 1000)
         }
+    }
+
+    override fun onDestroy() {
+        ui.removeCallbacks(tick)
+        super.onDestroy()
     }
 
     private fun applyThresholds() {
@@ -93,6 +116,7 @@ class SearchActivity : ProActivity() {
         clicks.divider = ProSettings.clickDivider(this)
         clicks.volume = ProSettings.clicksVolume(this) / 100f
         clicks.setCountRate(cps)
+        stats.setTextColor(cMuted)
         stats.text = "avg ${Units.number(cpsAvg)} cps   max ${Units.number(cpsMax)} cps\n" +
             "avg ${Units.doseRate(this, doseAvg / 1000.0).text()}   max ${Units.doseRate(this, doseMax / 1000.0).text()}"
     }

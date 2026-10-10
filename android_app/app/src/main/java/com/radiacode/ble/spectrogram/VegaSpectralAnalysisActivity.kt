@@ -1580,6 +1580,52 @@ class VegaSpectralAnalysisActivity : AppCompatActivity() {
                     "[$requestId] bg: got ${allSnapshots.size} differential snapshots"
                 )
                 
+                // Offline identification on the phone when the remote service is not enabled
+                if (com.radiacode.ble.device.ProSettings.remoteIsotopeEndpoint(context) == null) {
+                    val n = allSnapshots.maxOfOrNull { it.spectrumData.counts.size } ?: 0
+                    val sum = IntArray(n)
+                    for (snap in allSnapshots) {
+                        val c = snap.spectrumData.counts
+                        for (i in c.indices) sum[i] += c[i]
+                    }
+                    val cal = allSnapshots.firstOrNull()?.spectrumData
+                    val total = sum.sumOf { it.toLong() }
+                    if (cal == null || total < 500) {
+                        mainHandler.post {
+                            if (analysisSeq == requestSeq) {
+                                isAnalysisInProgress = false
+                                aiAnalysisButton.alpha = 1.0f
+                                aiAnalysisButton.isEnabled = true
+                            }
+                            Toast.makeText(context, "Not enough counts yet ($total). Record longer.", Toast.LENGTH_LONG).show()
+                        }
+                        return@execute
+                    }
+                    val t0 = System.currentTimeMillis()
+                    val r = com.radiacode.ble.analysis.PeakFinder().analyze(sum, cal.a0.toDouble(), cal.a1.toDouble(), cal.a2.toDouble())
+                    val isotopes = com.radiacode.ble.IsotopeLibrary.ALL_ISOTOPES.map { iso ->
+                        val m = r.matches.firstOrNull { it.isotope.id == iso.id }
+                        VegaIsotopeApiClient.IsotopeResult(iso.id, (m?.score ?: 0.0).toFloat(), 0f, iso.primaryLine.energyKeV)
+                    }.sortedByDescending { it.probability }
+                    val response = VegaIsotopeApiClient.IdentificationResponse(
+                        success = true,
+                        isotopes = isotopes,
+                        numDetected = r.matches.size,
+                        confidence = (r.matches.firstOrNull()?.score ?: 0.0).toFloat(),
+                        processingTimeMs = (System.currentTimeMillis() - t0).toFloat()
+                    )
+                    mainHandler.post {
+                        if (analysisSeq != requestSeq) return@post
+                        isAnalysisInProgress = false
+                        aiAnalysisButton.alpha = 1.0f
+                        aiAnalysisButton.isEnabled = true
+                        if (isFinishing || isDestroyed) return@post
+                        Toast.makeText(context, "Offline identification on ${allSnapshots.size} s of data", Toast.LENGTH_SHORT).show()
+                        IsotopeAnalysisActivity.start(context = context, deviceId = deviceId, result = response, allIsotopes = response.isotopes)
+                    }
+                    return@execute
+                }
+
                 // Check if we have enough samples
                 if (allSnapshots.size < requiredSamples) {
                     val remaining = requiredSamples - allSnapshots.size
@@ -1626,7 +1672,7 @@ class VegaSpectralAnalysisActivity : AppCompatActivity() {
                 // Call the API - this also runs on its own executor
                 android.util.Log.d("VegaIsotope", "[$requestId] bg: calling API")
                 
-                VegaIsotopeApiClient.endpoint = com.radiacode.ble.device.ProSettings.remoteIsotopeEndpoint(this)
+                VegaIsotopeApiClient.endpoint = com.radiacode.ble.device.ProSettings.remoteIsotopeEndpoint(context)
                 VegaIsotopeApiClient.identifyIsotopes(
                     snapshots = snapshots,
                     threshold = 0.1f,  // Very low threshold to get all possibilities

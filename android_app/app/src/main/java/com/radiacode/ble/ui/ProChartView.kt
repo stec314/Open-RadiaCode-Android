@@ -1759,7 +1759,12 @@ class ProChartView @JvmOverloads constructor(
         val labelCount = 4
         axisTextPaint.textAlign = Paint.Align.CENTER
 
+        // Fewer labels on narrow charts so neighbouring times never overlap
+        val sampleWidth = axisTextPaint.measureText("00:00:00") + density * 10f
+        val fitCount = (chartWidth / sampleWidth).toInt().coerceIn(1, labelCount)
         for (i in 0..labelCount) {
+            if (fitCount < labelCount && i % (labelCount / fitCount).coerceAtLeast(1) != 0 && i != labelCount) continue
+            if (fitCount < labelCount && i != labelCount && labelCount - i < (labelCount / fitCount).coerceAtLeast(1)) continue
             val frac = i.toFloat() / labelCount
             val x = chartLeft + chartWidth * frac
             val idx = (visibleStart + (visibleCount - 1) * frac).toInt().coerceIn(0, timestampsMs.size - 1)

@@ -78,57 +78,50 @@ class IsotopeDetector(
     
     /**
      * Analyze a spectrum and identify probable isotopes.
+     *
+     * Uses the shared offline engine (analysis.PeakFinder): resolution-aware peak search,
+     * rejection of broad continuum features, and library matching where peaks explained by
+     * one isotope are not reused as evidence for another. The previous fixed-window ROI
+     * method reported Am-241 on almost any spectrum because the 59.5 keV window sits on the
+     * low-energy scatter hump of the detector.
      */
     fun analyze(spectrum: SpectrumData): AnalysisResult {
-        val results = mutableListOf<Prediction>()
-        val evidenceMap = mutableMapOf<String, Float>()
-        
-        android.util.Log.d(TAG, "Analyzing spectrum: ${spectrum.numChannels} channels, " +
-            "totalCounts=${spectrum.totalCounts}, duration=${spectrum.durationSeconds}s, " +
-            "a0=${spectrum.a0} a1=${spectrum.a1} a2=${spectrum.a2}")
-        
-        // Calculate evidence for each enabled isotope
-        for (isotopeId in enabledIsotopes) {
-            val isotope = IsotopeLibrary.get(isotopeId) ?: continue
-            val evidence = calculateEvidence(spectrum, isotope)
-            evidenceMap[isotopeId] = evidence
+        val engine = com.radiacode.ble.analysis.PeakFinder()
+        val result = engine.analyze(spectrum.counts, spectrum.a0.toDouble(), spectrum.a1.toDouble(), spectrum.a2.toDouble())
+        val matches = result.matches.filter { it.isotope.id in enabledIsotopes }
+
+        // Net counts explained by each isotope (each peak counted once, for the first isotope that claims it)
+        val used = HashSet<com.radiacode.ble.analysis.PeakFinder.Peak>()
+        val netByIso = LinkedHashMap<String, Double>()
+        for (m in matches) {
+            var net = 0.0
+            for (l in m.lines) {
+                val p = l.peak ?: continue
+                if (used.add(p)) net += maxOf(0.0, p.netCounts)
+            }
+            netByIso[m.isotope.id] = net
         }
-        
-        // Normalize evidence to get fractions
-        val totalEvidence = evidenceMap.values.sum() + 0.001f // Avoid division by zero
-        
-        android.util.Log.d(TAG, "Total evidence: $totalEvidence, top evidences: ${evidenceMap.entries.sortedByDescending { it.value }.take(3)}")
-        
-        // Unknown/Background fraction
-        val knownFraction = evidenceMap.values.sum() / max(totalEvidence * 1.25f, 1f)
-        val unknownFraction = max(0f, 1f - knownFraction)
-        
-        // Calculate probabilities and fractions
+        val allPeaksNet = result.peaks.sumOf { maxOf(0.0, it.netCounts) }
+        val explained = netByIso.values.sum()
+        val denom = maxOf(allPeaksNet, explained, 1.0)
+
+        val results = mutableListOf<Prediction>()
         for (isotopeId in enabledIsotopes) {
             val isotope = IsotopeLibrary.get(isotopeId) ?: continue
-            val evidence = evidenceMap[isotopeId] ?: 0f
-            
-            // Sigmoid probability: converts evidence to 0-1 probability
-            val probability = sigmoid(evidence * SIGMOID_SCALE - SIGMOID_OFFSET)
-            
-            // Fraction: normalized evidence
-            val fraction = evidence / totalEvidence
-            
+            val m = matches.firstOrNull { it.isotope.id == isotopeId }
+            val evidence = m?.lines?.mapNotNull { it.peak?.significance }?.sum()?.toFloat() ?: 0f
             results.add(Prediction(
                 isotopeId = isotope.id,
                 name = isotope.name,
                 category = isotope.category,
-                probability = probability,
-                fraction = fraction,
+                probability = (m?.score ?: 0.0).toFloat(),
+                fraction = ((netByIso[isotopeId] ?: 0.0) / denom).toFloat(),
                 evidence = evidence,
                 primaryPeakKeV = isotope.primaryLine.energyKeV,
-                isDecayChain = isotope.parentChain != null || 
-                               isotope.id.contains("Chain") || 
-                               isotope.gammaLines.size > 2
+                isDecayChain = isotope.parentChain != null || isotope.id.contains("Chain") || isotope.gammaLines.size > 2
             ))
         }
-        
-        // Add unknown/background
+        val unknownFraction = if (allPeaksNet <= 0.0) 1f else (1.0 - explained / denom).toFloat().coerceIn(0f, 1f)
         results.add(Prediction(
             isotopeId = "Unknown",
             name = "Background/Unknown",
@@ -139,10 +132,9 @@ class IsotopeDetector(
             primaryPeakKeV = 0f,
             isDecayChain = false
         ))
-        
-        // Sort by probability descending
+
+        android.util.Log.d(TAG, "Analysis: ${result.peaks.size} peaks, matches=${matches.map { "${it.isotope.id}:${"%.2f".format(it.score)}" }}")
         val sorted = results.sortedByDescending { it.probability }
-        
         return AnalysisResult(
             predictions = sorted,
             topFive = sorted.take(5),
@@ -151,94 +143,12 @@ class IsotopeDetector(
             durationSeconds = spectrum.durationSeconds
         )
     }
-    
-    /**
-     * Calculate evidence score for an isotope from the spectrum.
-     * Uses ROI analysis: compare peak region counts to local background.
-     */
-    private fun calculateEvidence(spectrum: SpectrumData, isotope: IsotopeLibrary.Isotope): Float {
-        var totalEvidence = 0f
-        var weightSum = 0f
-        
-        val primaryLine = isotope.gammaLines.firstOrNull { it.isPrimary } ?: isotope.gammaLines.firstOrNull()
-        
-        for (line in isotope.gammaLines) {
-            val peakEnergyKeV = line.energyKeV
-            val weight = line.intensity * (if (line.isPrimary) 2f else 1f)
-            
-            // Skip if peak is outside spectrum range
-            val maxEnergy = spectrum.channelToEnergy(spectrum.numChannels - 1)
-            if (peakEnergyKeV > maxEnergy || peakEnergyKeV < 0) continue
-            
-            // Get ROI counts
-            val peakLowKeV = peakEnergyKeV - PEAK_WINDOW_KEV
-            val peakHighKeV = peakEnergyKeV + PEAK_WINDOW_KEV
-            val peakCounts = spectrum.getCountsInEnergyWindow(peakLowKeV, peakHighKeV)
-            
-            // Get background regions (on either side of peak)
-            val bgLowStart = peakLowKeV - BACKGROUND_MARGIN_KEV - BACKGROUND_WIDTH_KEV
-            val bgLowEnd = peakLowKeV - BACKGROUND_MARGIN_KEV
-            val bgHighStart = peakHighKeV + BACKGROUND_MARGIN_KEV
-            val bgHighEnd = peakHighKeV + BACKGROUND_MARGIN_KEV + BACKGROUND_WIDTH_KEV
-            
-            val bgLowCounts = spectrum.getCountsInEnergyWindow(bgLowStart, bgLowEnd)
-            val bgHighCounts = spectrum.getCountsInEnergyWindow(bgHighStart, bgHighEnd)
-            
-            // Estimate background in peak region (interpolate)
-            val peakWidth = (spectrum.energyToChannel(peakHighKeV) - spectrum.energyToChannel(peakLowKeV)).toFloat()
-            val bgWidth = (spectrum.energyToChannel(bgLowEnd) - spectrum.energyToChannel(bgLowStart) +
-                          spectrum.energyToChannel(bgHighEnd) - spectrum.energyToChannel(bgHighStart)).toFloat()
-            
-            val bgDensity = if (bgWidth > 0) (bgLowCounts + bgHighCounts).toFloat() / bgWidth else 0f
-            val estimatedBackground = bgDensity * peakWidth
-            
-            // Net counts (peak above background)
-            val netCounts = max(0f, peakCounts - estimatedBackground)
-            
-            // Evidence: normalized net counts
-            val totalCounts = spectrum.totalCounts.toFloat() + 1f
-            val lineEvidence = netCounts / totalCounts
-            
-            // Debug logging for primary line only (to reduce spam)
-            if (line == primaryLine) {
-                android.util.Log.d(TAG, "${isotope.id}: peak@${peakEnergyKeV}keV " +
-                    "peakCounts=$peakCounts bgEstimate=${estimatedBackground.toInt()} " +
-                    "netCounts=${netCounts.toInt()} evidence=$lineEvidence")
-            }
-            
-            totalEvidence += lineEvidence * weight
-            weightSum += weight
-        }
-        
-        return if (weightSum > 0) totalEvidence / weightSum else 0f
-    }
-    
-    /**
-     * Sigmoid activation function.
-     */
-    private fun sigmoid(x: Float): Float {
-        return (1f / (1f + exp(-x))).coerceIn(0f, 1f)
-    }
-    
+
     /**
      * Quick single-isotope check (e.g., for specific alerting).
      */
-    fun checkIsotope(spectrum: SpectrumData, isotopeId: String): Prediction? {
-        val isotope = IsotopeLibrary.get(isotopeId) ?: return null
-        val evidence = calculateEvidence(spectrum, isotope)
-        val probability = sigmoid(evidence * SIGMOID_SCALE - SIGMOID_OFFSET)
-        
-        return Prediction(
-            isotopeId = isotope.id,
-            name = isotope.name,
-            category = isotope.category,
-            probability = probability,
-            fraction = evidence,
-            evidence = evidence,
-            primaryPeakKeV = isotope.primaryLine.energyKeV,
-            isDecayChain = isotope.parentChain != null
-        )
-    }
+    fun checkIsotope(spectrum: SpectrumData, isotopeId: String): Prediction? =
+        analyze(spectrum).getPrediction(isotopeId)
 }
 
 /**

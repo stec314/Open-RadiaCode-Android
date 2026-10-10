@@ -37,6 +37,9 @@ class SignalsSettingsActivity : ProActivity() {
 
         val iface = card(column, "Interface")
         switchRow(iface, "Keep screen on", "In the instrument screens", ProSettings.keepScreenOn(this)) { ProSettings.setKeepScreenOn(this, it) }
+        sliderRow(iface, "Averaging window (Search)", 1, 60, ProSettings.averagingSeconds(this), { "$it s" }) { ProSettings.setAveragingSeconds(this, it) }
+        iface.addView(text("Start page", 14f, cText))
+        segmented(iface, listOf("Dashboard", "Search", "Spectrum", "Dose", "Intervention"), ProSettings.startPage(this)) { ProSettings.setStartPage(this, it) }
 
         val net = card(column, "Network and privacy",
             "By default nothing leaves the phone. Remote services are off until you enable them and enter your own HTTPS address. Plain HTTP is refused.")

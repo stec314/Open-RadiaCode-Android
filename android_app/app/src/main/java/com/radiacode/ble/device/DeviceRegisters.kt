@@ -22,6 +22,8 @@ enum class Vsfr(val id: Int, val kind: RegKind, val label: String) {
     SOUND_ON(0x0522, RegKind.BOOL, "Sound"),
     VIBRO_CTRL(0x0530, RegKind.BYTE, "Vibration events"),
     VIBRO_ON(0x0531, RegKind.BOOL, "Vibration"),
+    LEDS_ON(0x0545, RegKind.BOOL, "LEDs"),
+    PLAY_SIGNAL(0x05E1, RegKind.BYTE, "Play signal"),
     DR_LEV1_uR_h(0x8000, RegKind.U32, "Dose rate alarm 1"),
     DR_LEV2_uR_h(0x8001, RegKind.U32, "Dose rate alarm 2"),
     DS_UNITS(0x8004, RegKind.BOOL, "Dose units"),
@@ -40,7 +42,7 @@ enum class Vsfr(val id: Int, val kind: RegKind, val label: String) {
         /** Registers shown and editable in the device control screen. */
         val SETTINGS: List<Vsfr> = listOf(
             DEVICE_LANG, DISP_BRT, DISP_OFF_TIME, DISP_DIR,
-            SOUND_ON, SOUND_CTRL, VIBRO_ON, VIBRO_CTRL,
+            SOUND_ON, SOUND_CTRL, VIBRO_ON, VIBRO_CTRL, LEDS_ON,
             DR_LEV1_uR_h, DR_LEV2_uR_h, CR_LEV1_cp10s, CR_LEV2_cp10s,
             DS_LEV1_uR, DS_LEV2_uR, DS_UNITS, CR_UNITS, USE_nSv_h,
         )

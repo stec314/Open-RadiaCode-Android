@@ -64,6 +64,8 @@ internal object DeviceDataHub {
         private set
     @Volatile var lastCps: Float = 0f
         private set
+    @Volatile var lastUpdateMs: Long = 0L
+        private set
     private val fileLock = Any()
 
     fun dose(deviceId: String?): DoseState? =
@@ -74,6 +76,7 @@ internal object DeviceDataHub {
             lastDoseRateUsvH = uSvPerHour
             lastCps = cps
             val now = System.currentTimeMillis()
+            lastUpdateMs = now
 
             data.dose?.let { d ->
                 val st = DoseState(d.doseSv * 1_000_000f, d.durationSeconds, now)

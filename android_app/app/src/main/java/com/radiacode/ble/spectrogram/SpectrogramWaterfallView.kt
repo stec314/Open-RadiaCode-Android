@@ -669,18 +669,22 @@ class SpectrogramWaterfallView @JvmOverloads constructor(
         canvas.save()
         canvas.clipRect(chartRect)
         
-        for (marker in isotopeMarkers) {
+        // Labels go on the first row where they do not collide with an earlier label
+        val rowEnds = FloatArray(6) { Float.NEGATIVE_INFINITY }
+        val rowHeight = markerTextPaint.textSize * 1.25f
+        for (marker in isotopeMarkers.sortedBy { it.energy }) {
             val x = energyToScreenX(marker.energy)
             if (x < chartRect.left || x > chartRect.right) continue
             
             markerPaint.color = marker.color
             canvas.drawLine(x, chartRect.top, x, chartRect.bottom, markerPaint)
             
-            // Draw label at top
             markerTextPaint.color = marker.color
             val textWidth = markerTextPaint.measureText(marker.name)
             val labelX = (x - textWidth / 2).coerceIn(chartRect.left, chartRect.right - textWidth)
-            canvas.drawText(marker.name, labelX, chartRect.top + 15f, markerTextPaint)
+            val row = rowEnds.indexOfFirst { it + 4f < labelX }.let { if (it < 0) rowEnds.indices.minByOrNull { r -> rowEnds[r] }!! else it }
+            rowEnds[row] = labelX + textWidth
+            canvas.drawText(marker.name, labelX, chartRect.top + 15f + row * rowHeight, markerTextPaint)
         }
         
         canvas.restore()

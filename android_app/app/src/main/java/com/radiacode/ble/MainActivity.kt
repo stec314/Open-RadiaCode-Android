@@ -551,7 +551,10 @@ class MainActivity : AppCompatActivity() {
             return perms.toTypedArray()
         }
 
+    private var savedInstanceStateForStart: Bundle? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
+        savedInstanceStateForStart = savedInstanceState
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
@@ -902,6 +905,18 @@ class MainActivity : AppCompatActivity() {
 
         navView.setCheckedItem(R.id.nav_dashboard)
         setPanel(Panel.Dashboard)
+
+        // Optional start page (Signals and privacy > Interface), only on a fresh launch
+        if (savedInstanceStateForStart == null) {
+            val target = when (com.radiacode.ble.device.ProSettings.startPage(this)) {
+                1 -> com.radiacode.ble.pro.SearchActivity::class.java
+                2 -> com.radiacode.ble.pro.SpectrumActivity::class.java
+                3 -> com.radiacode.ble.pro.DoseActivity::class.java
+                4 -> com.radiacode.ble.pro.InterventionActivity::class.java
+                else -> null
+            }
+            if (target != null) startActivity(Intent(this, target))
+        }
     }
 
     private fun setupDevicePanel() {
