@@ -73,9 +73,19 @@ class DeviceControlActivity : ProActivity() {
     }
 
     private fun readRegisters(c: RadiacodeBleClient, regs: List<Vsfr>): RegisterSnapshot {
-        val raw = c.readVsfrs(regs.map { it.id }).get(15, TimeUnit.SECONDS)
         val map = LinkedHashMap<Vsfr, Int>()
-        regs.forEachIndexed { i, r -> raw.getOrNull(i)?.let { map[r] = it } }
+        val batch = runCatching { c.readVsfrs(regs.map { it.id }).get(15, TimeUnit.SECONDS) }
+        if (batch.isSuccess) {
+            val raw = batch.getOrThrow()
+            regs.forEachIndexed { i, r -> raw.getOrNull(i)?.let { map[r] = it } }
+        } else {
+            // Some firmware rejects a batch containing an unknown register: read one by one.
+            for (r in regs) {
+                runCatching { c.readVsfrs(listOf(r.id)).get(5, TimeUnit.SECONDS).firstOrNull() }
+                    .getOrNull()?.let { map[r] = it }
+            }
+            if (map.isEmpty()) throw batch.exceptionOrNull() ?: IllegalStateException("No register could be read")
+        }
         // Registers the batch flagged invalid are skipped rather than guessed.
         return RegisterSnapshot(map)
     }

@@ -821,3 +821,24 @@ GRP_RareData records are sent less frequently than GRP_RealTimeData (hence "rare
 ---
 
 *This document is part of the Open RadiaCode Android project.*
+
+---
+
+## Implemented in this app
+
+| Operation | Command / register | Notes |
+|-----------|--------------------|-------|
+| Request queue | all | One request in flight; later requests wait instead of failing |
+| Batch register read | `RD_VIRT_SFR_BATCH` `<I n><I id>*n` -> `<I flags><I value>*n` | Invalid registers flagged per bit; falls back to single reads |
+| Register write | `WR_VIRT_SFR` `<I id><I value>` -> `<I retcode>` | Every settings write is read back |
+| Dose reset | `WR_VIRT_SFR(DOSE_RESET)` without value | As in cdump/radiacode |
+| Spectrum reset | `WR_VIRT_STRING` `<I SPEC_RESET><I 0>` | |
+| Energy calibration write | `WR_VIRT_STRING` `<I ENERGY_CALIB><I 12><fff>` | |
+| Firmware / serial | `GET_VERSION`, `GET_SERIAL`, `VS.SERIAL_NUMBER` | |
+| Clock sync | `SET_TIME` then `DEVICE_TIME = 0` | |
+| Power off | `DEVICE_ON = 0` | |
+| Accumulated dose | `GRP_RareData` duration and dose | Shown in the Dose screen |
+| Events | `GRP_Event` | Logged, alarms repeated on the phone |
+
+Small registers documented with padded formats (`3xB`, `2xH`) are decoded from the low or the high byte, whichever is non-zero.
+Pure decoders live in `device/ResponseParsers.kt` and are covered by JVM tests in `app/src/test`.

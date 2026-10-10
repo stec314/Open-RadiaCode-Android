@@ -16,7 +16,7 @@ App name: **Open RadiaCode**
 
 ## Download & Installation
 
-Pre-built APK files are available in the [`Installer/`](Installer/) folder of this repository.
+Pre-built debug APKs are produced by GitHub Actions on every push and attached to a rolling pre-release per branch (`latest-build` for `main`, `latest-<branch>` for other branches) on the repository's Releases page.
 
 ### Step 1: Download the APK
 
@@ -186,6 +186,26 @@ Real-time isotope identification from gamma spectra:
 - **ROI Analysis**: Simple Region of Interest algorithm with sigmoid scoring
 - **Isotope Settings**: Enable/disable individual isotopes, grouped by category (Natural, Medical, Industrial, Fission)
 - **Advanced**: Pause live updates
+
+### Instrument screens (drawer, "Instrument" group)
+
+- **Search**: two auto-ranging gauges (count rate x1..x1000, dose rate x10 nSv/h..x10 uSv/h) with a fast needle, an 8 s averaged arc, alarm-colored scale bands and Geiger-style particle clicks (Poisson timing, divider and volume in Signals).
+- **Spectrum**: the spectrum accumulated on the device, log or linear, smoothing, pinch zoom and cursor readout. Background spectrum (stored once, scaled by live time) can be overlaid or subtracted. Library line markers, offline peak search and isotope matching, save/open spectra, export to ANSI N42.42 (opens in InterSpec, BecqMoni and others) or CSV, reset of the device spectrum.
+- **Dose**: dose accumulated by the device since its last reset, device dose alarm levels as a bar, average dose rate, daily and yearly forecast at the current rate, dose history sampled every minute, export, dose reset.
+- **Event log**: device events from the data buffer (alarms, power, charging, resets) and app actions (settings writes, missions), filters, CSV export.
+- **Intervention**: dose budget for a task, dose used (accumulated from device dose increments, so a dose reset during the task is not lost), remaining stay time at the current rate, alarms at 50, 80 and 100 percent, log every 30 s.
+- **Device control** (remote control of the RadiaCode): dose rate, count rate and dose alarm thresholds, sound and vibration on/off and per-event masks, brightness, display timeout, orientation, language, device display units, energy calibration editor with 2 or 3 point fit, clock sync, dose and spectrum reset, power off. Settings are backed up automatically before the first write and every write is verified by reading the registers back.
+- **Signals and privacy**: repeat device alarms on the phone (notification, vibration, tone), spoken alarms and periodic dose rate announcements with the phone's own speech engine, click settings, Sv/rem/R and Celsius/Fahrenheit, keep screen on, remote services.
+
+### Privacy and network
+
+Nothing leaves the phone by default. Remote isotope identification and the Vega remote voice are off until enabled in **Signals and privacy** with your own `https://` address; plain HTTP is refused and the device identifier is no longer sent. Earlier versions sent spectra and alert text to a fixed plain-HTTP address; that address is removed and ignored if still stored.
+
+### Known limits
+
+- Register encodings for device control follow the cdump/radiacode library. Small registers are decoded from either byte position and every write is read back; if the verification reports a mismatch, use **Restore backup**.
+- History stored inside the device while it was not connected is not downloaded; dose history and the event log start when the app is connected.
+- Offline identification is a peak search with counting statistics and library matching. It does not separate overlapping lines or estimate activity (Bq).
 
 ## Design Theme
 
